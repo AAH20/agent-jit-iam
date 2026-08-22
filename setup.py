@@ -2,8 +2,8 @@ from setuptools import setup, find_packages
 
 setup(
     name="agent-jit-iam",
-    version="1.0.0",
-    description="The Ephemeral Just-In-Time (JIT) IAM Token & Zero-Standing-Privilege Delegator for AI Agents",
+    version="2.0.0",
+    description="Credentialless, workload-bound capability authorization for autonomous agents",
     author="Ahmed Hassan",
     author_email="ahmed.alaa.hassan25@gmail.com",
     packages=find_packages(),

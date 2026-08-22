@@ -1,19 +1,100 @@
-# Agent-JIT-IAM 🔑⚡
+# Aegis Agent JIT IAM
 
-The Ephemeral Just-In-Time (JIT) IAM Token & Zero-Standing-Privilege (ZSP) Delegator for Autonomous AI Agents.
+Deterministic, credentialless authorization for autonomous workloads.
 
-[![CI](https://github.com/AAH20/agent-jit-iam/actions/workflows/ci.yml/badge.svg)](https://github.com/AAH20/agent-jit-iam)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Dependencies](https://img.shields.io/badge/Dependencies-Zero%20(Pure%20Stdlib)-brightgreen.svg)]()
-[![Compliance](https://img.shields.io/badge/Audit%20Ready-ISO%2042001%20%7C%20SOC%202-success.svg)]()
+The broker lets an agent request an external API operation without possessing a
+reusable credential. A trusted OpenShell-style proxy evaluates a signed,
+workload-bound capability and attaches or derives the provider credential only
+after authorization succeeds.
 
-## Highlights
-- 100% Python Standard Library (Zero External Dependencies, Pure HMAC-SHA256)
-- Enforces Zero Standing Privileges (ZSP) for Autonomous AI Agents
-- Mints Ephemeral, Single-Use, Scoped JIT Micro-Tokens (10-60 second TTL)
-- Prevents Silent Privilege Escalation, Replay Attacks, and Rogue Cloud Takeovers
-- Cryptographic SHA-256 IAM AuditLedger for ISO 42001 & SOC 2 Type II Identity Governance
+```text
+agent -> uncredentialed request -> Aegis capability check -> credential proxy -> provider
+                                      | deny                  | allow
+                                      +---- signed receipt ---+
+```
+
+No model call occurs in the authorization path. The reference implementation is
+Python standard-library only.
+
+## Security properties
+
+- SPIFFE/OpenShell workload binding prevents transfer between sandboxes.
+- Provider, method, path and request facts implement semantic least privilege.
+- Explicit deny rules precede allow rules.
+- Signed canonical capability documents detect mutation.
+- Child delegation cannot add operations, uses, lifetime or providers.
+- Atomic SQLite counters survive restarts and prevent replay.
+- Hash-linked EffectProof-compatible receipts bind decisions to request digests.
+- Real provider credentials remain outside the agent process.
+
+## GitHub vertical
+
+```python
+from agentiam import AuthorityBroker, ProviderOperation
+
+broker = AuthorityBroker(b"replace-with-32-byte-secret........")
+capability = broker.issue(
+    subject="did:key:worker-agent",
+    workload="spiffe://openshell/sandbox/8f21",
+    provider="github",
+    operations=[ProviderOperation(
+        "POST",
+        "/repos/AAH20/project/git/refs",
+        {"ref_prefix": "refs/heads/aegis/"},
+    )],
+    denied_paths=[
+        "/repos/*/*/actions/secrets/*",
+        "/repos/*/*/branches/main/*",
+    ],
+    ttl_seconds=60,
+    max_uses=1,
+)
+
+receipt = broker.authorize(
+    capability,
+    workload="spiffe://openshell/sandbox/8f21",
+    provider="github",
+    method="POST",
+    path="/repos/AAH20/project/git/refs",
+    facts={"ref": "refs/heads/aegis/fix-123"},
+)
+assert receipt.decision == "ALLOW"
+```
+
+The trusted proxy must forward only on `ALLOW`. The broker never accepts a
+credential and deliberately performs no network I/O.
+
+## Threat model
+
+The agent and its descendants are untrusted. The proxy, broker signing key,
+replay database, clock and workload-identity assertion are trusted. Deployments
+must derive `workload` from the sandbox/SPIFFE connection, never an
+agent-controlled header. HMAC is the compact reference signer; multi-host
+deployments should put signing behind KMS/HSM or add an asymmetric signer.
+
+Path `*` matches exactly one segment. Policies must name deeper resources
+explicitly, preventing a narrow-looking rule from recursively authorizing an
+unknown API subtree.
+
+## Test
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+The suite covers allowed operations, persistent replay prevention, workload
+theft, signature mutation, explicit denial, semantic branch constraints,
+expiration and delegation widening.
+
+## OpenShell alignment
+
+- [#682: cryptographic agent identity binding](https://github.com/NVIDIA/OpenShell/issues/682)
+- [#896: enhanced provider management](https://github.com/NVIDIA/OpenShell/issues/896)
+- [#1931: credential drivers](https://github.com/NVIDIA/OpenShell/issues/1931)
+- [#1665: SPIFFE workload identity provider](https://github.com/NVIDIA/OpenShell/issues/1665)
+
+The original `AgentJITDelegator` string-scope API remains available for compatibility.
 
 ## Author
-Ahmed Hassan (ahmed.alaa.hassan25@gmail.com) | https://github.com/AAH20
-A2Z SOC: https://a2zsoc.com
+
+Ahmed Hassan — [GitHub](https://github.com/AAH20) · [A2Z SOC](https://a2zsoc.com)
